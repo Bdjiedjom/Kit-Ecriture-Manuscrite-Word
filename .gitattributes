@@ -1,0 +1,5 @@
+*.bas text eol=crlf
+*.ttf binary
+*.docx binary
+*.zip binary
+*.pdf binary
