@@ -1,59 +1,68 @@
-Attribute VB_Name = "EquationsManuscrites"
 Option Explicit
 
-' Met toutes les Èquations du document dans l'Ècriture manuscrite.
-' Changez ces deux valeurs si vous voulez une autre police ou une autre couleur.
+' Remplacez par le nom EXACT de la police tel qu'il appara√Æt dans le menu d√©roulant de Word
 Private Const POLICE As String = "Playpen Manuscrit"
-Private Const COULEUR As String = "1B3A8C"   ' bleu stylo (code hexadÈcimal)
 
 Sub EquationsManuscrites()
-    Dim i As Long, rg As Range, prefixe As String
+    Dim i As Long, rg As Range, oMath As oMath
 
     If ActiveDocument.OMaths.Count = 0 Then
-        MsgBox "Aucune Èquation dans ce document.", vbInformation
+        MsgBox "Aucune √©quation dans ce document.", vbInformation
         Exit Sub
     End If
 
-    prefixe = "<m:r><m:rPr><m:nor/></m:rPr><w:rPr><w:rFonts w:ascii=""" & POLICE & _
-              """ w:hAnsi=""" & POLICE & """ w:cs=""" & POLICE & """/><w:color w:val=""" & _
-              COULEUR & """/></w:rPr>"
-
     Application.ScreenUpdating = False
-    For i = ActiveDocument.OMaths.Count To 1 Step -1
-        Set rg = ActiveDocument.OMaths(i).Range
-        rg.InsertXML RemplacerRuns(rg.WordOpenXML, prefixe)
-    Next i
-    Application.ScreenUpdating = True
 
-    MsgBox ActiveDocument.OMaths.Count & " Èquation(s) passÈe(s) en Ècriture manuscrite.", vbInformation
+    For i = ActiveDocument.OMaths.Count To 1 Step -1
+        Set oMath = ActiveDocument.OMaths(i)
+        Set rg = oMath.Range
+        
+        ' 1. Active le mode "Texte normal" math√©matique (<m:nor/>) dans le XML pour d√©bloquer la police
+        rg.InsertXML PasserEnTexteNormalSansEcraser(rg.WordOpenXML)
+        
+        ' 2. Force l'application de la police sur le Range (sans toucher aux couleurs ni gras/italique)
+        Set rg = ActiveDocument.OMaths(i).Range
+        rg.Font.Name = POLICE
+    Next i
+
+    Application.ScreenUpdating = True
+    MsgBox ActiveDocument.OMaths.Count & " √©quation(s) trait√©e(s).", vbInformation
 End Sub
 
-' Remplace le dÈbut de chaque <m:r> (et son ancien formatage) par le nouveau formatage.
-Private Function RemplacerRuns(ByVal x As String, ByVal prefixe As String) As String
-    Dim res As String, p As Long, q As Long
+Private Function PasserEnTexteNormalSansEcraser(ByVal xml As String) As String
+    Dim p As Long, q As Long, finR As Long
+    Dim res As String, bloc As String
+    res = ""
     p = 1
+
     Do
-        q = InStr(p, x, "<m:r>")
+        q = InStr(p, xml, "<m:r>")
         If q = 0 Then
-            res = res & Mid$(x, p)
+            res = res & Mid$(xml, p)
             Exit Do
         End If
-        res = res & Mid$(x, p, q - p) & prefixe
-        p = q + 5
-        p = SauterBalise(x, p, "m:rPr")
-        p = SauterBalise(x, p, "w:rPr")
-    Loop
-    RemplacerRuns = res
-End Function
 
-Private Function SauterBalise(ByVal x As String, ByVal p As Long, ByVal nom As String) As Long
-    Dim fin As Long
-    If Mid$(x, p, Len(nom) + 3) = "<" & nom & "/>" Then
-        SauterBalise = p + Len(nom) + 3
-    ElseIf Mid$(x, p, Len(nom) + 2) = "<" & nom & ">" Then
-        fin = InStr(p, x, "</" & nom & ">")
-        SauterBalise = fin + Len(nom) + 3
-    Else
-        SauterBalise = p
-    End If
+        res = res & Mid$(xml, p, q - p)
+        finR = InStr(q, xml, "</m:r>")
+        If finR = 0 Then
+            res = res & Mid$(xml, q)
+            Exit Do
+        End If
+
+        bloc = Mid$(xml, q + 5, finR - (q + 5))
+
+        ' Ajoute <m:nor/> (Texte Normal) pour d√©brayer Cambria Math
+        If InStr(bloc, "<m:rPr>") > 0 Then
+            If InStr(bloc, "<m:nor/>") = 0 Then
+                bloc = Replace(bloc, "<m:rPr>", "<m:rPr><m:nor/>", 1, 1)
+            End If
+        Else
+            bloc = "<m:rPr><m:nor/></m:rPr>" & bloc
+        End If
+
+        res = res & "<m:r>" & bloc & "</m:r>"
+        p = finR + 6
+    Loop
+
+    PasserEnTexteNormalSansEcraser = res
 End Function
